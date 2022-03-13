@@ -1,12 +1,6 @@
-function derivative = quadrotor_continous_nonlinear_model(u,x)
+function derivative = quadrotor_continous_nonlinear_model(u,x,g,m,interiaX,interiaY,interiaZ)
 %UNTITLED11 Summary of this function goes here
 %   Detaile91d explanation goes here
-
-g=9.81;
-m=2;
-interiaX=1;
-interiaY=1;
-interiaZ=1;
 
 R=[cos(x(5))*cos(x(6)),sin(x(4))*sin(x(5))*cos(x(6))-cos(x(4))*sin(x(6)),cos(x(4))*sin(x(5))*cos(x(6))-sin(x(4))*sin(x(6));...
     cos(x(5))*sin(x(6)),sin(x(4))*sin(x(5))*sin(x(6))+cos(x(4))*cos(x(6)),cos(x(4))*sin(x(5))*sin(x(6))-sin(x(4))*cos(x(6));...
