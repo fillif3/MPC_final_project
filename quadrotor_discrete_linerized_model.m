@@ -2,6 +2,10 @@ function xPlus = quadrotor_discrete_linerized_model(u,x,Ts,g,interiaX,interiaY,i
 %UNTITLED12 Summary of this function goes here
 %   Detailed explanation goes here
 
+R=[sin(x(4))*sin(x(5))*cos(x(6))-cos(x(4))*sin(x(6)),cos(x(4))*sin(x(5))*cos(x(6))-sin(x(4))*sin(x(6));...
+    cos(x(5))*sin(x(6)),sin(x(4))*sin(x(5))*sin(x(6))+cos(x(4))*cos(x(6)),cos(x(4))*sin(x(5))*sin(x(6))-sin(x(4))*cos(x(6));...
+    -sin(x(5)),sin(x(4))*cos(x(5)),cos(x(4))*cos(x(5))];
+
 A=eye(12);
 A(1,7)=Ts;
 A(2,8)=Ts;

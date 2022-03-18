@@ -13,6 +13,9 @@ A(7,5)=-g*Ts;
 A(8,4)=g*Ts;
 C=eye(12);
 C=C(1:6,:);
-observ=ctrb(A',C');
-result= rank(observ)==12;
+Ag=[C*A,eye(6);A,zeros(12,6)];
+Cg=eye(18);
+Cg=Cg(1:6,:);
+observ=ctrb(Ag',Cg');
+result= rank(observ)==18;
 end
