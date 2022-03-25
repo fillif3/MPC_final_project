@@ -30,21 +30,23 @@ end
 
 %% Prepare simulation and objective
 % Simulation parameters
-numberOfIterations=50;
-options = optimoptions('fmincon','Algorithm','interior-point');
+numberOfIterations=100;
+options = optimoptions('fmincon','Algorithm','interior-point','Display','off');
 
 
 % define starting state and trajectory
 x=[[10,0;0,15]*ones(2,1);zeros(10,1)];
-x_translation=[zeros(7,1);[10,0;0,15]*ones(2,1)];
+x_translation=[zeros(7,1);[0,0;0,0]*ones(2,1)];
 x_translation_history=zeros(9,numberOfIterations+1);
 x_translation_history(:,1)=x_translation;
+u_traslation_hisotry=zeros(3,numberOfIterations);
+error_position_history=zeros(3,numberOfIterations);
 x_rotation=zeros(9,1);
 x_estimated_translation=x_translation;
 x_estimated_rotation=x_rotation;
 
 xHistory=zeros(12,numberOfIterations+1);
-trajectory_generator= @(t,x,ts,horizon) constant_trajectory(t,x,ts,horizon);
+%trajectory_generator= %@(t,x,ts,horizon) constant_trajectory(t,x,ts,horizon);
 previous_input_translation=[0;0;0];
 previous_input_rotation=[0;0;0];
 
@@ -52,8 +54,12 @@ previous_input_rotation=[0;0;0];
 %% Prepare Translation MPC
 % MPC translation parameters
 Ts_translation=0.05;
-horizon_translation=8;
-horizon_translation_control=2;
+horizon_translation=25;
+trajectory= sinus_trajectory(0,x,Ts_translation,horizon_translation+numberOfIterations);%constant_trajectory(0,x,Ts_translation,horizon_translation);%
+trajectory = optimize_trajectory(starting_state,trajectory);
+ewqqqqqewqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
+
+horizon_translation_control=1;
 Q_scalar_translation=20;
 R_scalar_translation=0.1;
 alpha_translation=1.05;
@@ -189,23 +195,27 @@ for i=1:horizon_rotation_control
 end
 Get_input_constraints_b_rotation= @(u_previous) input_constraints_b_helper_rotation*u_previous+repmat([max_abs_accelration_phi; max_abs_accelration_theta; max_abs_accelration_psi],horizon_rotation_control*2,1);
 
-
 %% The simulation loop
 for i=1:numberOfIterations
     %% Find the next control input from transletioan MPC
     % Prepare cost function and constraints given previous input and current state
     %f_translation=Get_linear_component_translation(x);
+    trajectory_translation=trajectory(:,i:(i+horizon_translation));
     A_constraint_translation=[velocity_constraints_A;input_constraints_A];
     velocity_constraints_b=Get_velocity_constraints_b(x_translation);
     input_constraints_b=Get_input_constraints_b(previous_input_translation);
     b_constraint_translation=[velocity_constraints_b;input_constraints_b];
     % Solve convex program -> Change it later into quadratic program
     %inputs = quadprog(Hessian_translation,f_translation,A_constraint_translation,b_constraint_translation);
-    cost_function_translation=@(u) get_cost_function_translation(u,x_translation,trajectory_generator(i*Ts_translation,x,Ts_translation,horizon_translation));
+    cost_function_translation=@(u) get_cost_function_translation(u,x_translation,trajectory_translation);
     inputs = fmincon(cost_function_translation,zeros(horizon_translation_control*dimenstion_of_input_vector_translation,1)...
         ,A_constraint_translation,b_constraint_translation,[],[],[],[],[],options);
-    x_translation=A_translation_augmented*x_translation+B_translation_augmented*inputs(1:3);
+    next_input_translation=inputs(1:3);
+    previous_input_translation=next_input_translation+previous_input_translation;
+    x_translation=A_translation_augmented*x_translation+B_translation_augmented*next_input_translation;
     x_translation_history(:,i+1)=x_translation;
+    u_traslation_hisotry(:,i)=previous_input_translation;
+    error_position_history(:,i)=x_translation(7:9)-trajectory_translation(7:9,1);
     continue
     % Analzye input
     u_x = inputs(1:3:end);
@@ -251,8 +261,33 @@ end
 
 %% Plot simulation reults
 figure 
+title('position')
 plot([1:(numberOfIterations+1)],x_translation_history(7,:))
 hold on
 plot([1:(numberOfIterations+1)],x_translation_history(8,:))
 plot([1:(numberOfIterations+1)],x_translation_history(9,:))
+
+plot([1:(numberOfIterations)],trajectory(7,[1:(numberOfIterations)]));
+plot([1:(numberOfIterations)],trajectory(8,[1:(numberOfIterations)]));
+plot([1:(numberOfIterations)],trajectory(9,[1:(numberOfIterations)]));
+legend('x','y','z','ref x', 'ref y', 'ref z')
+figure 
+title('velocity')
+
+plot([1:(numberOfIterations+1)],x_translation_history(1,:)/Ts_translation+x_translation_history(4,:))
+hold on
+plot([1:(numberOfIterations+1)],x_translation_history(2,:)/Ts_translation+x_translation_history(5,:))
+plot([1:(numberOfIterations+1)],x_translation_history(3,:)/Ts_translation+x_translation_history(6,:))
+figure 
+title('input')
+plot([1:(numberOfIterations)],u_traslation_hisotry(1,:))
+hold on
+plot([1:(numberOfIterations)],u_traslation_hisotry(2,:))
+plot([1:(numberOfIterations)],u_traslation_hisotry(3,:))
+figure
+title('error')
+plot([1:(numberOfIterations)],error_position_history(1,:))
+hold on
+plot([1:(numberOfIterations)],error_position_history(2,:))
+plot([1:(numberOfIterations)],error_position_history(3,:))
 
