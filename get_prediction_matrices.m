@@ -11,7 +11,7 @@ end
 H=zeros(dimenstion_of_state_vector*horizon,horizon_control*dimenstion_of_input_vector);
 for i=1:horizon
    for j=1:min(i,horizon_control)
-        H(((i-1)*dimenstion_of_state_vector+1):(i*dimenstion_of_state_vector),horizon_control*dimenstion_of_input_vector*(j-1)+(1:3))=A_alpha^(i-j)*B_alpha;
+        H(((i-1)*dimenstion_of_state_vector+1):(i*dimenstion_of_state_vector),dimenstion_of_input_vector*(j-1)+(1:3))=A_alpha^(i-j)*B_alpha;
    end
 end 
 end

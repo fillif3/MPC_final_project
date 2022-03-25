@@ -35,10 +35,9 @@ options = optimoptions('fmincon','Algorithm','interior-point');
 
 
 % define starting state and trajectory
-x=[[10,0;0,15]*ones(2,1);zeros(10,1)];
-x_translation=[zeros(7,1);[10,0;0,15]*ones(2,1)];
-x_translation_history=zeros(9,numberOfIterations+1);
-x_translation_history(:,1)=x_translation;
+x=[10*ones(2,1);zeros(10,1)];
+x_translation=[zeros(7,1);10*ones(2,1)];
+x_translation_history=[zeros(7,1);10*ones(2,1)];
 x_rotation=zeros(9,1);
 x_estimated_translation=x_translation;
 x_estimated_rotation=x_rotation;
@@ -204,8 +203,7 @@ for i=1:numberOfIterations
     cost_function_translation=@(u) get_cost_function_translation(u,x_translation,trajectory_generator(i*Ts_translation,x,Ts_translation,horizon_translation));
     inputs = fmincon(cost_function_translation,zeros(horizon_translation_control*dimenstion_of_input_vector_translation,1)...
         ,A_constraint_translation,b_constraint_translation,[],[],[],[],[],options);
-    x_translation=A_translation_augmented*x_translation+B_translation_augmented*inputs(1:3);
-    x_translation_history(:,i+1)=x_translation;
+    x_translation=A_translation_augmented*x_translation+B_translation_augmented*inputs(1:3)
     continue
     % Analzye input
     u_x = inputs(1:3:end);
@@ -250,9 +248,3 @@ for i=1:numberOfIterations
 end
 
 %% Plot simulation reults
-figure 
-plot([1:(numberOfIterations+1)],x_translation_history(7,:))
-hold on
-plot([1:(numberOfIterations+1)],x_translation_history(8,:))
-plot([1:(numberOfIterations+1)],x_translation_history(9,:))
-
