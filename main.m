@@ -55,13 +55,13 @@ previous_input_rotation=[0;0;0];
 % MPC translation parameters
 Ts_translation=0.05;
 horizon_translation=25;
-trajectory= sinus_trajectory(0,x,Ts_translation,horizon_translation+numberOfIterations);%constant_trajectory(0,x,Ts_translation,horizon_translation);%
-trajectory = optimize_trajectory(starting_state,trajectory);
-ewqqqqqewqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
+%trajectory= sinus_trajectory(0,x,Ts_translation,horizon_translation+numberOfIterations);%constant_trajectory(0,x,Ts_translation,horizon_translation);%
+%trajectory = optimize_trajectory_global(x,goal,A,B,C,Q,R,obstacles);
+%ewqqqqqewqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
 
 horizon_translation_control=1;
 Q_scalar_translation=20;
-R_scalar_translation=0.1;
+R_scalar_translation=0.001;
 alpha_translation=1.05;
 lambda_translation=0.96;
 max_linear_velocity=20;
@@ -82,39 +82,26 @@ end
 
 % MPC translation cost function
 
-[Q_full_translation,R_full_translation]=get_full_weight_matrices(A_translation_augmented,B_translation_augmented,Q_scalar_translation,R_scalar_translation,[0,0,0,0,0,0,1,1,1],lambda_translation,alpha_translation,horizon_translation,horizon_translation_control);
+[Q_full_translation,R_full_translation,Q_matrix_translation,R_matrix_translation]=get_full_weight_matrices(A_translation_augmented,B_translation_augmented,Q_scalar_translation,R_scalar_translation,[0,0,0,0,0,0,1,1,1],lambda_translation,alpha_translation,horizon_translation,horizon_translation_control);
 get_cost_function_translation = @(u,x_0,trajectory) reference_cost_function(u,x_0,trajectory,F_translation,H_translation,Q_full_translation,R_full_translation,horizon_translation);
 %Hessian_translation=H_translation'*Q_full_translation*H_translation+R_full_translation;
 %Get_linear_component_translation= @(x0) H_translation'*Q_full_translation*F_translation*x0;
 
 % MPC translation state (velocity) constraints
-velocity_constraints_A=zeros(6*horizon_translation,dimenstion_of_input_vector_translation*horizon_translation_control);
-velocity_constraints_b_helper=zeros(6*horizon_translation,length(A_translation_augmented));
-
-for i=1:horizon_translation
-    delta_x_i=H_translation_normal((i-1)*dimenstion_of_augmented_state_vector_translation+(1:3),:);
-    delta_v_i=H_translation_normal((i-1)*dimenstion_of_augmented_state_vector_translation+(4:6),:);
-    velocity_constraints_A((i-1)*6+(1:3),:)=delta_x_i/Ts_translation+delta_v_i;
-    velocity_constraints_A((i-1)*6+(4:6),:)=-delta_x_i/Ts_translation-delta_v_i;
-    delta_x_i_x0=F_translation_normal((i-1)*dimenstion_of_augmented_state_vector_translation+(1:3),:);
-    delta_v_i_x0=F_translation_normal((i-1)*dimenstion_of_augmented_state_vector_translation+(4:6),:);
-    velocity_constraints_b_helper((i-1)*6+(1:3),:)=-delta_x_i_x0/Ts_translation-delta_v_i_x0;
-    velocity_constraints_b_helper((i-1)*6+(4:6),:)=delta_x_i_x0/Ts_translation+delta_v_i_x0;
-end
-Get_velocity_constraints_b= @(x0) velocity_constraints_b_helper*x0+max_linear_velocity*ones([6*horizon_translation,1]);
+[velocity_constraints_A,Get_velocity_constraints_b]=prepare_constraints_translation_veloctiy(F_translation_normal,H_translation_normal,horizon_translation,horizon_translation_control,dimenstion_of_input_vector_translation,max_linear_velocity,Ts_translation);
 
 % MPC translation input (accelration) constraints
-input_constraints_A=zeros(6*horizon_translation_control,dimenstion_of_input_vector_translation*horizon_translation_control);
-input_constraints_b_helper=zeros(6*horizon_translation_control,3);
-for i=1:horizon_translation_control
-    for j=1:i
-        input_constraints_A((i-1)*6+(1:3),3*(j-1)+(1:3))=eye(3);
-        input_constraints_A((i-1)*6+(4:6),3*(j-1)+(1:3))=-eye(3);
-    end
-    input_constraints_b_helper((i-1)*6+(1:3),:)=-eye(3);
-    input_constraints_b_helper((i-1)*6+(4:6),:)=eye(3);
-end
-Get_input_constraints_b= @(u_previous) input_constraints_b_helper*u_previous+max_linear_accelration*ones([6*horizon_translation_control,1]);
+[input_constraints_A,input_constraints_b_helper]=prepare_constraints_translation_input(horizon_translation_control,dimenstion_of_input_vector_translation,max_linear_accelration);
+%% Prepare Global Trajectory
+global_horizon=500;
+[velocity_constraints_A_global,Get_velocity_constraints_b_global]=prepare_constraints_translation_veloctiy(F_translation_normal,H_translation_normal,global_horizon,global_horizon,dimenstion_of_input_vector_translation,max_linear_velocity/2,Ts_translation);
+[input_constraints_A_global,input_constraints_b_helper_global]=prepare_constraints_translation_input(global_horizon,dimenstion_of_input_vector_translation,max_linear_accelration/2);
+A_constraint_translation_global=[velocity_constraints_A_global;input_constraints_A_global];
+velocity_constraints_b_global=Get_velocity_constraints_b_global(x_translation);
+input_constraints_b_global=Get_input_constraints_b_global([0;0;0]);
+b_constraint_translation_global=[velocity_constraints_b_global;input_constraints_b_global];
+[trajectory,inputs]=optimize_trajectory_global(x_translation,[10,10,10],A_translation_augmented,B_translation_augmented,C_translation_augmented,Q_matrix_translation,R_matrix_translation,[],A_constraint_translation_global,b_constraint_translation_global,global_horizon,10);
+return
 
 
 
