@@ -9,8 +9,8 @@ for i=1:number_of_states*horizon
     end
 end
 for i=1:horizon
-    velocity_constraints_b_helper((i-1)*6+(1:3),:)=-F((i-1)*number_of_states+(4:6),:);
+    velocity_constraints_b_helper((i-1)*6+(1:3),:)=F((i-1)*number_of_states+(4:6),:);
     velocity_constraints_b_helper((i-1)*6+(4:6),:)=-velocity_constraints_b_helper((i-1)*6+(1:3),:);
 end
-Get_velocity_constraints_b= @(x0) velocity_constraints_b_helper*x0+max_v*ones([6*horizon_translation,1]);
+Get_velocity_constraints_b= @(x0) velocity_constraints_b_helper*x0+max_v*ones([6*horizon,1]);
 end

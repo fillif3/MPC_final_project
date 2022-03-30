@@ -8,7 +8,7 @@ function[constraints_A,get_constraints_b]=prepare_constraints_translation(F,H,ho
 
 % MPC translation input (accelration) constraints
 size_h=size(H);
-number_of_inputs=size_h(2);
+number_of_inputs=size_h(2)/horizon;
 [input_constraints_A,input_constraints_b]=prepare_constraints_translation_input(horizon,number_of_inputs,max_f);
 
 
