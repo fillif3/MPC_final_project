@@ -28,9 +28,10 @@ if isempty(obstacles)
     end
     Hes=H'*Q_full*H+R_full;
     f=2*[(-goal)',zeros(1,3)]*F'*Q_full*H;
-    inputs=quadprog(Hes,f,constraints_A,constraints_b,constraints_Aeq,constraints_beq);
+    [inputs,~,exitflag]=quadprog(Hes,f,constraints_A,constraints_b,constraints_Aeq,constraints_beq);
     inputs=inputs';
-else
+end
+if ((~isempty(obstacles))||(exitflag<1))
     non_locon = @(u) global_pah_nonlocon(u,A,B,C,obstacles,horizon,3,minimum_distance_to_obstacle);
     cost_function = @(u) global_trajectory_cost_function(u,goal,A,B,C,Q,R,horizon,3);
     inputs=ga(cost_function,3*horizon,constraints_A,constraints_b,constraints_Aeq,constraints_beq,[],[],non_locon);
