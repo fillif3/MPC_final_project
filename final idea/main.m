@@ -39,7 +39,7 @@ R_scalar_translation=0.1;
 max_distance_from_waypoint=1.5;%max_linear_velocity*Ts_global;
 max_linear_velocity=20;
 max_linear_force=pi/2;
-max_linear_force_difference=max_linear_force/10; %Changed -> test
+max_linear_force_difference=max_linear_force/5; %Changed -> test
 
 % MPC translation system matrices
 [A_translation,B_translation,B_translation_noise]=get_trasnlation_model(g,Ts_translation,m);
@@ -100,6 +100,7 @@ end
 % MPC rotation state constraints
 [constraints_rotation_A,get_constraints_rotation_b]=prepare_constraints_rotation(F_rotation,H_rotation,horizon_rotation,max_angles,min_angles,max_angles_abs_vel,max_angles_abs_acc);
 constraints_Aeq_rotation=H_rotation((end-5):end,:);
+[A_translation_testing,B_translation_testing,~]=get_trasnlation_model(g,Ts_rotation,m);
 
 
 
@@ -115,7 +116,7 @@ x_estimation=x;
 % Translation managment
 x_translation=zeros(6,1);
 x_translation_estimation=x_translation;
-x_translation_history=zeros(6,numberOfIterations+1);
+x_translation_history=zeros(6,numberOfIterations*NumberOfIterationsOfInterloop+1);
 u_previous_translation=zeros(3,1);
 u_traslation_hisotry=zeros(3,numberOfIterations);
 previous_input_translation=[0;0;0];
@@ -143,8 +144,11 @@ interpolation=false;
 last_waypoint=[trajectory_global(1:3,horizon_global);zeros(3,1)];
 constraints_beq_translation=current_waypoint;
 inputs=zeros(horizon_translation*dimenstion_of_input_vector_translation,1);
+% For testing
+
 
 for i=1:numberOfIterations
+    
     % If system is close to the next waypoint, 
     while ((norm(x_estimated_translation(1:3)-current_waypoint(1:3))<(max_distance_from_waypoint/2))&&(waypoint_order_number<=horizon_global))
         if waypoint_order_number>=horizon_global
@@ -195,8 +199,7 @@ for i=1:numberOfIterations
     end
     %disp(exitflag)
     next_input_translation=inputs(1:3);
-    previous_input_translation=next_input_translation;
-    
+    u_traslation_hisotry(:,i)=next_input_translation;
     ref_angle=[next_input_translation(1:2);zeros(4,1)];
     for j=1:NumberOfIterationsOfInterloop
         while true
@@ -219,18 +222,20 @@ for i=1:numberOfIterations
             end
         end
         %disp(exitflag)
+        x_estimated_translation=A_translation_testing*x_estimated_translation+B_translation_testing*[x_estimated_rotation(1:2);next_input_translation(3)];
+        x_translation_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=x_estimated_translation;
+        
         next_input_rotation=inputs(1:3);
         x_estimated_rotation=A_rotation*x_estimated_rotation+B_rotation*next_input_rotation;
         x_rotation_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=x_estimated_rotation;
         ref_angle_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=ref_angle;
         u_rotation_hisotry(:,(i-1)*NumberOfIterationsOfInterloop+j)=next_input_rotation;
+        
     
         
               
     end
-    x_estimated_translation=A_translation*x_estimated_translation+B_translation*next_input_translation;
-    x_translation_history(:,i+1)=x_estimated_translation;
-    u_traslation_hisotry(:,i)=previous_input_translation;
+    previous_input_translation=[x_estimated_rotation(1:2);next_input_translation(3)];
 
 
 end
@@ -247,7 +252,7 @@ for j=obstacles
     o=j{1};
     surf(X*treshold+o(1),Y*treshold+o(2),Z*treshold+o(3))
 end
-plot3(x_translation_history(1,1:i),x_translation_history(2,1:i),x_translation_history(3,1:i));
+plot3(x_translation_history(1,1:i*10),x_translation_history(2,1:i*10),x_translation_history(3,1:i*10));
 
 % %Plot planned velocities
 % figure
@@ -258,10 +263,10 @@ plot3(x_translation_history(1,1:i),x_translation_history(2,1:i),x_translation_hi
 
 %Plot real velocities
 figure
-plot([1:i],x_translation_history(4,1:i));
+plot([1:i*10],x_translation_history(4,1:i*10));
 hold on
-plot([1:i],x_translation_history(5,1:i));
-plot([1:i],x_translation_history(6,1:i));
+plot([1:i*10],x_translation_history(5,1:i*10));
+plot([1:i*10],x_translation_history(6,1:i*10));
 
 % 
 % %Plot inputs
