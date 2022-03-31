@@ -80,7 +80,7 @@ NumberOfIterationsOfInterloop=10;
 Ts_rotation=0.01;%Ts_translation/NumberOfIterationsOfInterloop; 
 horizon_rotation=10;
 Q_scalar_rotation=25;
-R_scalar_rotation=0.1;
+R_scalar_rotation=0.001;
 max_angles=[pi/2,pi/2,pi]';
 min_angles=[-pi/2 -pi/2 0]';
 max_angles_abs_vel=[0.8,0.8,1]';
@@ -125,11 +125,12 @@ xHistory=zeros(12,numberOfIterations+1);
 % Rotation managment
 x_rotation=zeros(6,1);
 x_rotation_estimation=x_rotation;
-x_rotation_history=zeros(6,numberOfIterations+1);%*number_of_innerloop
+x_rotation_history=zeros(6,numberOfIterations*NumberOfIterationsOfInterloop+1);%
 u_previous_rotation=zeros(3,1);
-u_rotation_hisotry=zeros(3,numberOfIterations);
+u_rotation_hisotry=zeros(3,numberOfIterations*NumberOfIterationsOfInterloop);
 error_position_history=zeros(3,numberOfIterations);
 x_estimated_rotation=x_rotation;
+ref_angle_history=zeros(6,numberOfIterations*NumberOfIterationsOfInterloop+1);
 
 
 
@@ -144,7 +145,7 @@ constraints_beq_translation=current_waypoint;
 inputs=zeros(horizon_translation*dimenstion_of_input_vector_translation,1);
 
 for i=1:numberOfIterations
-%         If system is close to the next waypoint, 
+    % If system is close to the next waypoint, 
     while ((norm(x_estimated_translation(1:3)-current_waypoint(1:3))<(max_distance_from_waypoint/2))&&(waypoint_order_number<=horizon_global))
         if waypoint_order_number>=horizon_global
             waypoint_order_number=waypoint_order_number+1;
@@ -161,9 +162,11 @@ for i=1:numberOfIterations
         current_waypoint = trajectory_global(:,waypoint_order_number);
         
     end
+    % End mission when close to the last destination
     if norm(x_estimated_translation(:)-last_waypoint(:))<treshold_translation
             break
     end
+    % Show results
     if mod(i,22)==0
         disp(current_waypoint)
     end
@@ -192,14 +195,46 @@ for i=1:numberOfIterations
     end
     %disp(exitflag)
     next_input_translation=inputs(1:3);
-    previous_input_translation=next_input_translation+previous_input_translation;
+    previous_input_translation=next_input_translation;
+    
+    ref_angle=[next_input_translation(1:2);zeros(4,1)];
+    for j=1:NumberOfIterationsOfInterloop
+        while true
+            x_estimatet_rotation_shifted=x_estimated_rotation-ref_angle;
+            b_constraints_rotation=get_constraints_rotation_b(x_estimatet_rotation_shifted);
+            constraints_beq_rotation=-F_rotation((horizon_rotation-1)*length(A_rotation)+(1:length(A_rotation)),:)*x_estimatet_rotation_shifted;
+            %cost_function_translation =@(u) get_cost_function_translation(u,x_estimated_translation,current_waypoint);
+        %     [inputs,~,exitflag,~] = fmincon(cost_function_translation,zeros(horizon_translation*3,1)...
+        %         ,constraints_translation_A,b_constraints_tranlsation,constraints_Aeq_translation,...
+        %         constraints_beq_translation,[],[],[],options);
+            Hes_rotation=H_rotation'*Q_full_rotation*H_rotation+R_full_rotation;
+            grad_rotation=2*x_estimatet_rotation_shifted'*F_rotation'*Q_full_rotation*H_rotation;
+            
+            [inputs,~,exitflag]=quadprog(Hes_rotation,grad_rotation,constraints_rotation_A,b_constraints_rotation,...
+                constraints_Aeq_rotation,constraints_beq_rotation,[],[],zeros(horizon_rotation*3,1),options);
+            if isempty(inputs)
+                error('k');
+            else
+                break
+            end
+        end
+        %disp(exitflag)
+        next_input_rotation=inputs(1:3);
+        x_estimated_rotation=A_rotation*x_estimated_rotation+B_rotation*next_input_rotation;
+        x_rotation_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=x_estimated_rotation;
+        ref_angle_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=ref_angle;
+        u_rotation_hisotry(:,(i-1)*NumberOfIterationsOfInterloop+j)=next_input_rotation;
+    
+        
+              
+    end
     x_estimated_translation=A_translation*x_estimated_translation+B_translation*next_input_translation;
     x_translation_history(:,i+1)=x_estimated_translation;
     u_traslation_hisotry(:,i)=previous_input_translation;
 
 
 end
-toc
+
 
 % % Plot results
 % plot trajectory
@@ -235,3 +270,25 @@ plot([1:i],x_translation_history(6,1:i));
 % hold on
 % plot([1:horizon_global],inputs_global(2:3:end));
 % plot([1:horizon_global],inputs_global(3:3:end));
+
+% Plot rotation position
+figure
+plot([1:i*10],x_rotation_history(1,1:i*10));
+hold on
+plot([1:i*10],ref_angle_history(1,1:i*10));
+plot([1:i*10],x_rotation_history(2,1:i*10));
+plot([1:i*10],x_rotation_history(3,1:i*10));
+% Plot rotation velocity
+figure
+plot([1:i*10],x_rotation_history(4,1:i*10));
+hold on
+plot([1:i*10],x_rotation_history(5,1:i*10));
+plot([1:i*10],x_rotation_history(6,1:i*10));
+% Plot rotation inputs
+% 
+% %Plot inputs
+% figure
+% plot([1:i],u_rotation_hisotry(1:3:end));
+% hold on
+% plot([1:i],u_rotation_hisotry(2:3:end));
+% plot([1:i],u_rotation_hisotry(3:3:end));
