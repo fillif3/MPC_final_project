@@ -38,8 +38,8 @@ Q_scalar_translation=20;
 R_scalar_translation=0.1;
 max_distance_from_waypoint=1.5;%max_linear_velocity*Ts_global;
 max_linear_velocity=20;
-max_linear_force=11.5;
-max_linear_force_difference=0.15; %Changed -> test
+max_linear_force=pi/2;
+max_linear_force_difference=max_linear_force/10; %Changed -> test
 
 % MPC translation system matrices
 [A_translation,B_translation,B_translation_noise]=get_trasnlation_model(g,Ts_translation,m);
@@ -74,6 +74,34 @@ goal=[10;10;0];
 [trajectory_global,inputs_global] = find_global_path(goal,A_global,B_global,C,Q_matrix_global,R_matrix_translation,obstacles,max_linear_velocity/10,max_linear_force/2,max_linear_force_difference*3.5, horizon_global,treshold);
 
 
+%% Prepare Rotation MPC
+% MPC Rotation parameters
+NumberOfIterationsOfInterloop=10;
+Ts_rotation=0.01;%Ts_translation/NumberOfIterationsOfInterloop; 
+horizon_rotation=10;
+Q_scalar_rotation=25;
+R_scalar_rotation=0.1;
+max_angles=[pi/2,pi/2,pi]';
+min_angles=[-pi/2 -pi/2 0]';
+max_angles_abs_vel=[0.8,0.8,1]';
+max_angles_abs_acc=[18.5*la,18.5*la,1]';
+
+% MPC rotation system matrices
+[A_rotation,B_rotation,B_rotation_noise]=get_rotation_model(g,Ts_rotation,Ix,Iy,Iz);
+[number_of_states_rotation,number_of_inputs_rotation]=size(B_rotation);
+if ~check_if_obsrvable_and_controlable(A_rotation,B_rotation,C)
+    error('System not obsevable or not controlable')
+end
+[F_rotation,H_rotation] = get_prediction_matrices(A_rotation,B_rotation,horizon_rotation);
+% MPC rotation cost function
+
+[Q_full_rotation,R_full_rotation,Q_matrix_rotation,R_matrix_rotation]=get_full_weight_matrices(A_rotation,B_rotation,Q_scalar_rotation,R_scalar_rotation,[1,1,1,1,1,1],horizon_rotation);
+
+% MPC rotation state constraints
+[constraints_rotation_A,get_constraints_rotation_b]=prepare_constraints_rotation(F_rotation,H_rotation,horizon_rotation,max_angles,min_angles,max_angles_abs_vel,max_angles_abs_acc);
+constraints_Aeq_rotation=H_rotation((end-5):end,:);
+
+
 
 %% Prepare simulation and objective
 % Simulation parameters
@@ -90,16 +118,18 @@ x_translation_estimation=x_translation;
 x_translation_history=zeros(6,numberOfIterations+1);
 u_previous_translation=zeros(3,1);
 u_traslation_hisotry=zeros(3,numberOfIterations);
-error_position_history=zeros(3,numberOfIterations);
-x_rotation=zeros(9,1);
-x_estimated_translation=x_translation;
-x_estimated_rotation=x_rotation;
-
-xHistory=zeros(12,numberOfIterations+1);
-% trajectory_generator= %@(t,x,ts,horizon) constant_trajectory(t,x,ts,horizon);
 previous_input_translation=[0;0;0];
-previous_input_rotation=[0;0;0];
-
+error_position_history=zeros(3,numberOfIterations);
+x_estimated_translation=x_translation;
+xHistory=zeros(12,numberOfIterations+1);
+% Rotation managment
+x_rotation=zeros(6,1);
+x_rotation_estimation=x_rotation;
+x_rotation_history=zeros(6,numberOfIterations+1);%*number_of_innerloop
+u_previous_rotation=zeros(3,1);
+u_rotation_hisotry=zeros(3,numberOfIterations);
+error_position_history=zeros(3,numberOfIterations);
+x_estimated_rotation=x_rotation;
 
 
 
@@ -112,7 +142,7 @@ interpolation=false;
 last_waypoint=[trajectory_global(1:3,horizon_global);zeros(3,1)];
 constraints_beq_translation=current_waypoint;
 inputs=zeros(horizon_translation*dimenstion_of_input_vector_translation,1);
-tic
+
 for i=1:numberOfIterations
 %         If system is close to the next waypoint, 
     while ((norm(x_estimated_translation(1:3)-current_waypoint(1:3))<(max_distance_from_waypoint/2))&&(waypoint_order_number<=horizon_global))
