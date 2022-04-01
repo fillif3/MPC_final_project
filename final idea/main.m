@@ -1,6 +1,6 @@
 clear; clc
 rng=(1);
-noise_flag=false;
+noise_flag=true;
 measruable_state=false;
 warning('off');
 %% define drone parameters
@@ -23,7 +23,7 @@ size_of_c=size(C);
 dimensiotn_of_output=size_of_c(1);
 if noise_flag
     var_system=0.001;
-    var_measurment=0.001;
+    var_measurment=1;
 else
     var_system=0;
     var_measurment=0;
@@ -67,7 +67,7 @@ constraints_Aeq_translation=H_translation((end-5):end,:);
 horizon_global=15;
 Ts_global= 0.5;%(horizon_translation-1)*Ts_translation;
 [A_global,B_global,~]=get_trasnlation_model(g,Ts_global,m);
-obstacles=[];%{[5,5,0],[3,7,0],[4,6,0],[6,4,0],[7,3,0]};
+obstacles=[] ;%{[5,5,0],[3,7,0],[4,6,0],[6,4,0],[7,3,0]};
 treshold=2*max_distance_from_waypoint;
 goal=[10;10;0];
 [~,~,Q_matrix_global,~]=get_full_weight_matrices(A_translation,B_translation,Q_scalar_translation,R_scalar_translation,[1,1,1,0,0,0],horizon_translation);
@@ -100,7 +100,6 @@ end
 % MPC rotation state constraints
 [constraints_rotation_A,get_constraints_rotation_b]=prepare_constraints_rotation(F_rotation,H_rotation,horizon_rotation,max_angles,min_angles,max_angles_abs_vel,max_angles_abs_acc);
 constraints_Aeq_rotation=H_rotation((end-5):end,:);
-[A_translation_testing,B_translation_testing,~]=get_trasnlation_model(g,Ts_rotation,m);
 
 
 
@@ -113,6 +112,8 @@ options = optimoptions('quadprog','Display','off','Algorithm','active-set');
 % define starting state and trajectory
 x=zeros(12,1);
 x_estimation=x;
+P_x=eye(12)*0.0001;
+estimation_error_history=zeros(1,numberOfIterations*NumberOfIterationsOfInterloop+1);
 % Translation managment
 x_translation=zeros(6,1);
 x_translation_estimation=x_translation;
@@ -145,7 +146,11 @@ last_waypoint=[trajectory_global(1:3,horizon_global);zeros(3,1)];
 constraints_beq_translation=current_waypoint;
 inputs=zeros(horizon_translation*dimenstion_of_input_vector_translation,1);
 % For testing
-
+[A_translation_testing,B_translation_testing,~]=get_trasnlation_model(g,Ts_rotation,m);
+[A_full,B_full,B_full_noise]=get_full_model(Ix,Iy,Iz,g,Ts_rotation);
+C_full=blkdiag(C,C);
+Q_full_measurment_noise=eye(12)*var_system;
+R_full_measurment_noise=eye(6)*var_measurment;
 
 for i=1:numberOfIterations
     
@@ -221,13 +226,19 @@ for i=1:numberOfIterations
                 break
             end
         end
-        %disp(exitflag)
-        x_estimated_translation=A_translation_testing*x_estimated_translation+B_translation_testing*[x_estimated_rotation(1:2);next_input_translation(3)];
-        x_translation_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=x_estimated_translation;
-        
         next_input_rotation=inputs(1:3);
-        x_estimated_rotation=A_rotation*x_estimated_rotation+B_rotation*next_input_rotation;
-        x_rotation_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=x_estimated_rotation;
+        full_input=[next_input_translation(3);next_input_rotation];
+        x=A_full*x+B_full*full_input;% Add system noise
+        measurment=C_full*x+normrnd(0,var_measurment,[6,1])*Ts_rotation;
+        [x_estimation,P_x]=Kalman_filtering(full_input,x_estimation,measurment,P_x,A_full,B_full,C_full,Q_full_measurment_noise,R_full_measurment_noise);
+        %x_estimation([1:3,7:9])=measurment;
+        x_estimated_translation=x_estimation(1:6);
+        x_estimated_rotation=x_estimation(7:12);
+        
+        
+        estimation_error_history(1,(i-1)*NumberOfIterationsOfInterloop+j+1)=norm(x-x_estimation);
+        x_translation_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=x(1:6);
+        x_rotation_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=x(7:12);
         ref_angle_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=ref_angle;
         u_rotation_hisotry(:,(i-1)*NumberOfIterationsOfInterloop+j)=next_input_rotation;
         
@@ -250,7 +261,7 @@ hold on
 [X,Y,Z] = sphere;
 for j=obstacles
     o=j{1};
-    surf(X*treshold+o(1),Y*treshold+o(2),Z*treshold+o(3))
+    surf(X*treshold/2+o(1),Y*treshold/2+o(2),Z*treshold/2+o(3))
 end
 plot3(x_translation_history(1,1:i*10),x_translation_history(2,1:i*10),x_translation_history(3,1:i*10));
 
@@ -297,3 +308,7 @@ plot([1:i*10],x_rotation_history(6,1:i*10));
 % hold on
 % plot([1:i],u_rotation_hisotry(2:3:end));
 % plot([1:i],u_rotation_hisotry(3:3:end));
+
+% Plot estimation error
+figure
+plot([1:i*10],estimation_error_history(1,1:i*10))
