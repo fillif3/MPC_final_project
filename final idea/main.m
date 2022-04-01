@@ -22,7 +22,7 @@ end
 size_of_c=size(C);
 dimensiotn_of_output=size_of_c(1);
 if noise_flag
-    var_system=0.001;
+    var_system=1;
     var_measurment=1;
 else
     var_system=0;
@@ -64,7 +64,7 @@ constraints_Aeq_translation=H_translation((end-5):end,:);
 %constraints_beq_translation=zeros(6,1);
 
 %% Preaper trajectory
-horizon_global=15;
+horizon_global=12;
 Ts_global= 0.5;%(horizon_translation-1)*Ts_translation;
 [A_global,B_global,~]=get_trasnlation_model(g,Ts_global,m);
 obstacles=[] ;%{[5,5,0],[3,7,0],[4,6,0],[6,4,0],[7,3,0]};
@@ -228,7 +228,8 @@ for i=1:numberOfIterations
         end
         next_input_rotation=inputs(1:3);
         full_input=[next_input_translation(3);next_input_rotation];
-        x=A_full*x+B_full*full_input;% Add system noise
+        %x_helper=A_full*x+B_full*full_input;
+        x=A_full*x+B_full*full_input+B_full_noise*normrnd(0,var_measurment,[4,1]);% Add system noise
         measurment=C_full*x+normrnd(0,var_measurment,[6,1])*Ts_rotation;
         [x_estimation,P_x]=Kalman_filtering(full_input,x_estimation,measurment,P_x,A_full,B_full,C_full,Q_full_measurment_noise,R_full_measurment_noise);
         %x_estimation([1:3,7:9])=measurment;
