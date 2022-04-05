@@ -7,5 +7,6 @@ A(2,5)=Ts;
 A(3,6)=Ts;
 B=zeros(6,3);
 B(4:6,1:3)=diag([Ix^(-1),Iy^(-1),Iz^(-1)])*Ts;
-B_noise=diag([0,1,0,1,0,1])*Ts;
+B_noise=zeros(6,3);
+B_noise(4:6,1:3)=eye(3)*Ts;
 end

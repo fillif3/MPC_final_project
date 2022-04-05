@@ -21,13 +21,10 @@ if ~measruable_state
 end
 size_of_c=size(C);
 dimensiotn_of_output=size_of_c(1);
-if noise_flag
-    var_system=1;
-    var_measurment=1;
-else
-    var_system=0;
-    var_measurment=0;
-end
+var_system=0.1;
+var_measurment=0.1;
+max_bias=1;
+bias = normrnd(0,max_bias,[6 1]);
 
 %% Prepare Translation MPC
 % MPC translation parameters
@@ -112,8 +109,10 @@ options = optimoptions('quadprog','Display','off','Algorithm','active-set');
 % define starting state and trajectory
 x=zeros(12,1);
 x_estimation=x;
-P_x=eye(12)*0.0001;
+bias_estimation=zeros(6,1);
+P_x=diag([0.001*ones(1,12),1000*ones(1,6)]);
 estimation_error_history=zeros(1,numberOfIterations*NumberOfIterationsOfInterloop+1);
+bias_estimation_error_history=zeros(1,numberOfIterations*NumberOfIterationsOfInterloop+1);
 % Translation managment
 x_translation=zeros(6,1);
 x_translation_estimation=x_translation;
@@ -147,9 +146,9 @@ constraints_beq_translation=current_waypoint;
 inputs=zeros(horizon_translation*dimenstion_of_input_vector_translation,1);
 % For testing
 [A_translation_testing,B_translation_testing,~]=get_trasnlation_model(g,Ts_rotation,m);
-[A_full,B_full,B_full_noise]=get_full_model(Ix,Iy,Iz,g,Ts_rotation);
+[A_full,B_full,B_full_noise,C_full_noise]=get_full_model(Ix,Iy,Iz,g,Ts_rotation);
 C_full=blkdiag(C,C);
-Q_full_measurment_noise=eye(12)*var_system;
+Q_full_measurment_noise=eye(18)*var_system;
 R_full_measurment_noise=eye(6)*var_measurment;
 
 for i=1:numberOfIterations
@@ -192,7 +191,8 @@ for i=1:numberOfIterations
     %         constraints_beq_translation,[],[],[],options);
         Hes=H_translation'*Q_full_translation*H_translation+R_full_translation;
         grad=2*x_estimatet_translation_shifted'*F_translation'*Q_full_translation*H_translation;
-        
+        uref=inv(B_translation(4:6,:))*B_translation_noise(4:6,:)*bias_estimation(1:3);
+
         [inputs,~,exitflag,message]=quadprog(Hes,grad,constraints_translation_A,b_constraints_tranlsation,...
             constraints_Aeq_translation,constraints_beq_translation,[],[],[inputs(4:end);zeros(3,1)],options);
         if isempty(inputs)
@@ -203,7 +203,7 @@ for i=1:numberOfIterations
         end
     end
     %disp(exitflag)
-    next_input_translation=inputs(1:3);
+    next_input_translation=inputs(1:3)-uref;
     u_traslation_hisotry(:,i)=next_input_translation;
     ref_angle=[next_input_translation(1:2);zeros(4,1)];
     for j=1:NumberOfIterationsOfInterloop
@@ -217,6 +217,7 @@ for i=1:numberOfIterations
         %         constraints_beq_translation,[],[],[],options);
             Hes_rotation=H_rotation'*Q_full_rotation*H_rotation+R_full_rotation;
             grad_rotation=2*x_estimatet_rotation_shifted'*F_rotation'*Q_full_rotation*H_rotation;
+            uref_rational=inv(B_rotation(4:6,:))*B_rotation_noise(4:6,:)*bias_estimation(4:6);
             
             [inputs,~,exitflag]=quadprog(Hes_rotation,grad_rotation,constraints_rotation_A,b_constraints_rotation,...
                 constraints_Aeq_rotation,constraints_beq_rotation,[],[],zeros(horizon_rotation*3,1),options);
@@ -226,13 +227,16 @@ for i=1:numberOfIterations
                 break
             end
         end
-        next_input_rotation=inputs(1:3);
+        next_input_rotation=inputs(1:3)-uref_rational;
         full_input=[next_input_translation(3);next_input_rotation];
         %x_helper=A_full*x+B_full*full_input;
-        x=A_full*x+B_full*full_input+B_full_noise*normrnd(0,var_measurment,[4,1]);% Add system noise
+        system_noise=normrnd(bias,var_measurment);
+        x=A_full*x+B_full*full_input+B_full_noise*system_noise;% Add system noise
         measurment=C_full*x+normrnd(0,var_measurment,[6,1])*Ts_rotation;
-        [x_estimation,P_x]=Kalman_filtering(full_input,x_estimation,measurment,P_x,A_full,B_full,C_full,Q_full_measurment_noise,R_full_measurment_noise);
+        [full_estimation,P_x]=Kalman_filtering(full_input,[x_estimation;bias_estimation],measurment,P_x,[A_full,B_full_noise;zeros(6,12),eye(6)] ,[B_full;zeros(6,4)],[C_full,C_full_noise],Q_full_measurment_noise,R_full_measurment_noise);
         %x_estimation([1:3,7:9])=measurment;
+        x_estimation=full_estimation(1:12);
+        bias_estimation=full_estimation(13:18);
         x_estimated_translation=x_estimation(1:6);
         x_estimated_rotation=x_estimation(7:12);
         
