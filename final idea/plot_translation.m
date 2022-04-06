@@ -61,10 +61,10 @@ constraints_Aeq_translation=H_translation((end-5):end,:);
 %constraints_beq_translation=zeros(6,1);
 
 %% Preaper trajectory
-horizon_global=15;
+horizon_global=12;
 Ts_global= 0.5;%(horizon_translation-1)*Ts_translation;
 [A_global,B_global,~]=get_trasnlation_model(g,Ts_global,m);
-obstacles={[5,5,0]} ;%{[5,5,0],[3,7,0],[4,6,0],[6,4,0],[7,3,0]};
+obstacles=[] ;%{[5,5,0],[3,7,0],[4,6,0],[6,4,0],[7,3,0]};
 treshold=2*max_distance_from_waypoint;
 goal=[10;10;0];
 [~,~,Q_matrix_global,~]=get_full_weight_matrices(A_translation,B_translation,Q_scalar_translation,R_scalar_translation,[1,1,1,0,0,0],horizon_translation);
@@ -114,7 +114,7 @@ P_x=diag([0.001*ones(1,12),1000*ones(1,6)]);
 estimation_error_history=zeros(1,numberOfIterations*NumberOfIterationsOfInterloop+1);
 bias_estimation_error_history=zeros(1,numberOfIterations*NumberOfIterationsOfInterloop+1);
 % Translation managment
-x_translation=zeros(6,1);
+x_translation=[1;-0.5;-1;zeros(3,1)]/8;
 x_translation_estimation=x_translation;
 x_translation_history=zeros(6,numberOfIterations*NumberOfIterationsOfInterloop+1);
 u_previous_translation=zeros(3,1);
@@ -154,25 +154,9 @@ R_full_measurment_noise=eye(6)*var_measurment;
 
 for i=1:numberOfIterations
     
-    % If system is close to the next waypoint, 
-    while ((norm(x_estimated_translation(1:3)-current_waypoint(1:3))<(max_distance_from_waypoint/2))&&(waypoint_order_number<=horizon_global))
-        if waypoint_order_number>=horizon_global
-            waypoint_order_number=waypoint_order_number+1;
-            previous_waypoint=current_waypoint;
-            current_waypoint=last_waypoint;
-            break
-        end
-        if interpolation
-            interpolation=false;
-        else
-            waypoint_order_number=waypoint_order_number+1;
-        end
-        previous_waypoint=current_waypoint;
-        current_waypoint = trajectory_global(:,waypoint_order_number);
-        
-    end
+
     % End mission when close to the last destination
-    if norm(x_estimated_translation(:)-last_waypoint(:))<treshold_translation
+    if norm(x_estimated_translation(:))<0.01
             break
     end
     % Show results
@@ -180,7 +164,7 @@ for i=1:numberOfIterations
         disp(current_waypoint)
     end
     while true
-        current_waypoint_without_velicoty=[current_waypoint(1:3);zeros(3,1)];
+        current_waypoint_without_velicoty=zeros(6,1);
         
         x_estimatet_translation_shifted=x_estimated_translation-current_waypoint_without_velicoty;
         b_constraints_tranlsation=get_constraints_translation_b(u_previous_translation,x_estimatet_translation_shifted);
@@ -192,7 +176,6 @@ for i=1:numberOfIterations
     %         constraints_beq_translation,[],[],[],options);
         Hes=H_translation'*Q_full_translation*H_translation+R_full_translation;
         grad=2*x_estimatet_translation_shifted'*F_translation'*Q_full_translation*H_translation;
-        uref=inv(B_translation(4:6,:))*B_translation_noise(4:6,:)*bias_estimation(1:3);
 
         [inputs,~,exitflag,message]=quadprog(Hes,grad,constraints_translation_A,b_constraints_tranlsation,...
             constraints_Aeq_translation,constraints_beq_translation,[],[],[inputs(4:end);zeros(3,1)],options);
@@ -204,96 +187,46 @@ for i=1:numberOfIterations
         end
     end
     %disp(exitflag)
-    next_input_translation=inputs(1:3)-uref;
+    next_input_translation=inputs(1:3);
     u_traslation_hisotry(:,i)=next_input_translation;
-    ref_angle=[next_input_translation(1:2);zeros(4,1)];
-    for j=1:NumberOfIterationsOfInterloop
-        while true
-            x_estimatet_rotation_shifted=x_estimated_rotation-ref_angle;
-            b_constraints_rotation=get_constraints_rotation_b(x_estimatet_rotation_shifted);
-            constraints_beq_rotation=-F_rotation((horizon_rotation-1)*length(A_rotation)+(1:length(A_rotation)),:)*x_estimatet_rotation_shifted;
-            %cost_function_translation =@(u) get_cost_function_translation(u,x_estimated_translation,current_waypoint);
-        %     [inputs,~,exitflag,~] = fmincon(cost_function_translation,zeros(horizon_translation*3,1)...
-        %         ,constraints_translation_A,b_constraints_tranlsation,constraints_Aeq_translation,...
-        %         constraints_beq_translation,[],[],[],options);
-            Hes_rotation=H_rotation'*Q_full_rotation*H_rotation+R_full_rotation;
-            grad_rotation=2*x_estimatet_rotation_shifted'*F_rotation'*Q_full_rotation*H_rotation;
-            uref_rational=inv(B_rotation(4:6,:))*B_rotation_noise(4:6,:)*bias_estimation(4:6);
-            
-            [inputs_rot,~,exitflag]=quadprog(Hes_rotation,grad_rotation,constraints_rotation_A,b_constraints_rotation,...
-                constraints_Aeq_rotation,constraints_beq_rotation,[],[],zeros(horizon_rotation*3,1),options);
-            if isempty(inputs_rot)
-                error('k');
-            else
-                break
-            end
-        end
-        next_input_rotation=inputs_rot(1:3)-uref_rational;
-        full_input=[next_input_translation(3);next_input_rotation];
-        %x_helper=A_full*x+B_full*full_input;
-        system_noise=normrnd(bias,var_measurment);
-        x=A_full*x+B_full*full_input+B_full_noise*system_noise;% Add system noise
-        measurment=C_full*x+normrnd(0,var_measurment,[6,1])*Ts_rotation;
-        [full_estimation,P_x]=Kalman_filtering(full_input,[x_estimation;bias_estimation],measurment,P_x,[A_full,B_full_noise;zeros(6,12),eye(6)] ,[B_full;zeros(6,4)],[C_full,C_full_noise],Q_full_measurment_noise,R_full_measurment_noise);
-        %x_estimation([1:3,7:9])=measurment;
-        x_estimation=full_estimation(1:12);
-        bias_estimation=full_estimation(13:18);
-        x_estimated_translation=x_estimation(1:6);
-        x_estimated_rotation=x_estimation(7:12);
-        
-        
-        estimation_error_history(1,(i-1)*NumberOfIterationsOfInterloop+j+1)=norm(x-x_estimation);
-        x_translation_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=x(1:6);
-        x_rotation_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=x(7:12);
-        ref_angle_history(:,(i-1)*NumberOfIterationsOfInterloop+j+1)=ref_angle;
-        u_rotation_hisotry(:,(i-1)*NumberOfIterationsOfInterloop+j)=next_input_rotation;
-        
-        bias_estimation_error_history(1,(i-1)*NumberOfIterationsOfInterloop+j)=norm(bias_estimation-bias);
-        
+    x_estimated_translation=A_translation*x_estimated_translation+B_translation*next_input_translation;
+
               
-    end
-    previous_input_translation=[x_estimated_rotation(1:2);next_input_translation(3)];
+    x_translation_history(:,i)=x_estimated_translation;
+    u_traslation_hisotry(:,i)=next_input_translation;
+    previous_input_translation=next_input_translation;
 
 
 end
 
 
-% % Plot results
-% plot trajectory
-plot3(trajectory_global(1,:),trajectory_global(2,:),trajectory_global(3,:),'o');
-axis([-1 max(goal) -1 max(goal) -3 max(goal)/5])
-hold on
-% plot obstacles
-[X,Y,Z] = sphere;
-for j=obstacles
-    o=j{1};
-    surf(X*treshold/2+o(1),Y*treshold/2+o(2),Z*treshold/2+o(3))
-end
-plot3(x_translation_history(1,1:(i-1)*10),x_translation_history(2,1:(i-1)*10),x_translation_history(3,1:(i-1)*10));
 
-
-%Plot real velocities
-figure
-plot([1:(i-1)*10],x_translation_history(4,1:(i-1)*10));
-hold on
-plot([1:(i-1)*10],x_translation_history(5,1:(i-1)*10));
-plot([1:(i-1)*10],x_translation_history(6,1:(i-1)*10));
-legend('velocity x','velocity y','velocity z')
-% 
-
+% %Plot planned velocities
+% figure
+% plot([1:horizon_global],trajectory_global(4,:));
+% hold on
+% plot([1:horizon_global],trajectory_global(5,:));
+% plot([1:horizon_global],trajectory_global(6,:));
 
 % Plot rotation position
 figure
-plot([1:(i-1)*10],x_rotation_history(1,1:(i-1)*10));
+plot([1:(i-1)],x_translation_history(1,1:(i-1)));
 hold on
-plot([1:(i-1)*10],ref_angle_history(1,1:(i-1)*10));
-legend('phi','ref phi','psi')
-
-
-% Plot estimation error
+plot([1:(i-1)],x_translation_history(2,1:(i-1)));
+plot([1:(i-1)],x_translation_history(3,1:(i-1)));
+legend('x','y','z')
+% Plot rotation velocity
 figure
-plot([1:(i-1)*10],estimation_error_history(1,1:(i-1)*10))
+plot([1:(i-1)],x_translation_history(4,1:(i-1)));
 hold on
-plot([1:(i-1)*10],bias_estimation_error_history(1,1:(i-1)*10))
-legend('state estimation error','bias estimation error')
-ylim([0 0.5])
+plot([1:(i-1)],x_translation_history(5,1:(i-1)));
+plot([1:(i-1)],x_translation_history(6,1:(i-1)));
+legend('velocity x','velocity y','velocity z')
+
+% Plot rotation inputs
+figure
+plot([1:(i-1)],u_traslation_hisotry(1,1:(i-1)));
+hold on
+plot([1:(i-1)],u_traslation_hisotry(2,1:(i-1)));
+plot([1:(i-1)],u_traslation_hisotry(3,1:(i-1)));
+legend('theta ref','phi ref','u1')

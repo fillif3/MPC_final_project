@@ -1,0 +1,3 @@
+This is a code for the final project.
+
+The code can be divided into functions and scripts. Scripts can be run to create plots added in the report. The user can change parameters (of system or controller) and run simulation again. As long the paramaeters make sense (horizon is int, feasible path can be found) the code should be able to run simulation. The main script simulation entire systems, othe scripts simulate parts of the system. 
